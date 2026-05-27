@@ -1,8 +1,4 @@
-#!/bin/bash
-# Run this once from your Terminal to push the week3 code to GitHub.
-# The repo https://github.com/jaideep-aher/aipi561-week3 is already created.
-#
-# Usage:  bash push_to_github.sh
+
 
 set -e
 
