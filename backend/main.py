@@ -1,10 +1,8 @@
-"""Week 3 API — identical to Week 2, data.py now runs validation at startup."""
-
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 import data
 
-app = FastAPI(title="NYC Cab Analytics API — Week 3", version="3.0.0")
+app = FastAPI(title="NYC Cab Analytics API", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,7 +14,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    """Returns API health + data quality status from the last validation run."""
+    """Returns API health and data quality status."""
     dq = data._data_quality_result
     return {
         "status": "ok",

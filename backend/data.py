@@ -1,17 +1,6 @@
 """
-Week 3 — data.py
-Builds on Week 2 backend with added graceful data-quality validation.
-
-New in Week 3:
-  • check_and_log_data_quality() — runs at startup, logs all issues, NEVER crashes the API
-  • Uses validation.check_data_quality.DataQualityValidator
-  • Corrupted parquet is validated and reported; the API continues with Week 2 clean data
-
-Startup sequence (bottom of file):
-  _profile, _zones_df = _load()          # Week 2 clean data
-  _lgbm_model        = _load_model()
-  _full_demand       = _load_full_demand()
-  check_and_log_data_quality()           # NEW: validate corrupted data, log issues
+Precomputes demand aggregations from demand_enriched.parquet at startup.
+Validates the corrupted upstream data and logs any issues found.
 """
 
 import logging
@@ -30,7 +19,6 @@ DATA_PATH = _ROOT / "data" / "processed" / "demand_enriched.parquet"
 LOOKUP_PATH = _ROOT / "metadata" / "Lookups" / "taxi_zone_lookup.csv"
 MODEL_PATH = _ROOT / "data" / "processed" / "lgbm_demand_model.txt"
 
-# Week 3: corrupted upstream data lives here
 CORRUPTED_DATA_PATH = Path(__file__).parent.parent / "data" / "demand_enriched_corrupted.parquet"
 
 REFERENCE_DATE = pd.Timestamp("2026-02-14")
@@ -76,28 +64,9 @@ FEATURES = [
 ]
 
 
-# ── Week 3: Data Quality Validation ──────────────────────────────────────────
-
 def check_and_log_data_quality() -> dict:
-    """
-    Run validation on the corrupted upstream parquet and log all issues found.
-
-    This function is called once at startup.  It:
-      1. Loads demand_enriched_corrupted.parquet
-      2. Splits on CUTOFF (2026-01-16): baseline = pre-cutoff, corrupted = post
-      3. Runs DataQualityValidator against the corrupted window
-      4. Logs each issue via Python logging (WARNING level)
-      5. Returns the validation result dict — the API continues regardless
-
-    Design decisions:
-      • Uses a try/except so the entire function is a no-op if the file is
-        missing or if the validation code itself has a bug.
-      • Never raises — the API must start even if validation fails.
-      • Returns a result dict so callers (e.g. a /health endpoint) can surface
-        validation status without crashing.
-    """
+    """Validate the corrupted parquet at startup. Logs issues, never crashes the API."""
     try:
-        # Import here so the module can load even if validation package is absent
         import sys
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from validation.check_data_quality import DataQualityValidator, CUTOFF
@@ -126,12 +95,11 @@ def check_and_log_data_quality() -> dict:
         result = validator.validate(corrupted)
 
         if result["is_valid"]:
-            logger.info("✅  Data quality check passed — no issues found.")
+            logger.info("Data quality check passed.")
         else:
             logger.warning(
-                "⚠️  Data quality check FAILED — %d issue(s) detected in "
-                "upstream data (post 2026-01-16). "
-                "API continues serving clean Week 2 data.",
+                "Data quality check FAILED — %d issue(s) detected. "
+                "API continues on clean data.",
                 result["num_issues"],
             )
             for issue in result["issues"]:
@@ -149,13 +117,7 @@ def check_and_log_data_quality() -> dict:
         return result
 
     except Exception as e:
-        # Log the error but DO NOT crash the API
-        logger.error(
-            "Data quality check failed to run (exception: %s). "
-            "API will continue with existing data.",
-            e,
-            exc_info=True,
-        )
+        logger.error("Data quality check failed: %s", e, exc_info=True)
         return {
             "is_valid": False,
             "num_issues": 0,
@@ -164,7 +126,6 @@ def check_and_log_data_quality() -> dict:
         }
 
 
-# ── Week 2 code unchanged below ───────────────────────────────────────────────
 
 def _load():
     print("[NYC Cab Analytics] Loading demand profile...")

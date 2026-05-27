@@ -1,82 +1,47 @@
 name: Data Quality Check
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Schedule choice: HOURLY
-#
-# Justification:
-#   • This is a production taxi-demand API.  Corrupted data causes wrong surge
-#     pricing and driver mis-routing — every missed hour of bad data has direct
-#     financial impact on riders and drivers.
-#   • Hourly strikes a good balance: fast enough to catch a bad data push within
-#     one business cycle (one "rush-hour period") without the infrastructure cost
-#     of every-15-min polling.
-#   • Daily would be too slow — a batch job at midnight could corrupt an entire
-#     day of forecasts before anyone notices.
-#   • We also trigger on push (to main) and on data-file / validation-code
-#     changes to catch regressions in the pipeline immediately.
-# ──────────────────────────────────────────────────────────────────────────────
+# Runs hourly — catches bad data within one shift cycle without over-polling.
+# Also fires on any push that touches data or validation code.
 
 on:
   schedule:
-    - cron: '0 * * * *'   # Every hour, on the hour
+    - cron: '0 * * * *'
   push:
     branches: [main]
     paths:
       - 'week3/data/**'
       - 'week3/validation/**'
       - 'week3/backend/data.py'
-      - 'week3/.github/workflows/validate-data.yml'
-  workflow_dispatch:       # Allow manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   validate:
-    name: Validate data quality
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout ────────────────────────────────────────────────────────
       - uses: actions/checkout@v4
 
-      # ── 2. Python ──────────────────────────────────────────────────────────
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      # ── 3. Dependencies ────────────────────────────────────────────────────
       - name: Install dependencies
         run: pip install pandas pyarrow numpy
 
-      # ── 4. Validate data quality ───────────────────────────────────────────
-      #
-      # Loads demand_enriched_corrupted.parquet, splits on 2026-01-16,
-      # runs all checks, and exits non-zero if any issue is found.
-      # The script prints per-issue details so the Actions log is self-contained.
-      - name: Run data quality validation
-        id: validate
+      - name: Run validation
         run: |
           cd week3
           python -m validation.check_data_quality .
 
-      # ── 5. Run unit tests (always, even if validation passed) ──────────────
-      - name: Run validation unit tests
+      - name: Run tests
         if: always()
         run: |
           pip install pytest
-          python -m pytest week3/validation/test_data_quality.py -v \
-            --tb=short \
-            -k "not real_corrupted"   # skip parquet-dependent tests if file absent
+          python -m pytest week3/validation/test_data_quality.py -v --tb=short
 
-      # ── 6. Block deployment ────────────────────────────────────────────────
-      - name: Block deployment if validation failed
+      - name: Block deploy on failure
         if: failure()
         run: |
-          echo "::error::Data quality validation FAILED — deployment blocked."
-          echo "Review the issues above, fix the upstream data pipeline, then re-run."
+          echo "Data quality check failed — deployment blocked."
           exit 1
-
-      # ── 7. Success ─────────────────────────────────────────────────────────
-      - name: Data quality OK
-        if: success()
-        run: echo "✅  Data quality validation passed — safe to deploy."
