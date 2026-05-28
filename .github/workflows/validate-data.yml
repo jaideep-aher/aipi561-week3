@@ -9,9 +9,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'week3/data/**'
-      - 'week3/validation/**'
-      - 'week3/backend/data.py'
+      - 'data/**'
+      - 'validation/**'
+      - 'backend/data.py'
   workflow_dispatch:
 
 jobs:
@@ -30,15 +30,13 @@ jobs:
         run: pip install pandas pyarrow numpy
 
       - name: Run validation
-        run: |
-          cd week3
-          python -m validation.check_data_quality .
+        run: python -m validation.check_data_quality .
 
       - name: Run tests
         if: always()
         run: |
           pip install pytest
-          python -m pytest week3/validation/test_data_quality.py -v --tb=short
+          python -m pytest validation/test_data_quality.py -v --tb=short
 
       - name: Block deploy on failure
         if: failure()
